@@ -1,0 +1,173 @@
+Product Requirements Document (PRD)
+Project: AI Web App Builder (BYOK - Bring Your Own Key)
+Version: 1.0
+Status: Draft
+Date: October 26, 2026
+
+1. Executive Summary
+The AI Web App Builder is a client-side web application that allows users to generate, preview, and iterate on web applications (HTML, CSS, JS) using natural language prompts.
+
+Unlike traditional AI builders that charge subscription fees for AI usage, this platform utilizes a Bring Your Own Key (BYOK) architecture. Users input their own API credentials (OpenAI, Anthropic, Groq, or custom/local endpoints) in a settings menu. The application stores these credentials locally in the browser and uses them to make direct API calls, ensuring zero server costs for the platform owner and complete privacy for the user.
+
+2. Goals & Objectives
+Zero Server Cost: All AI processing and code rendering happen on the client side.
+
+Privacy First: API keys are never sent to our servers (because there are no servers).
+
+Instant Feedback: Users can see their generated apps live in a split-screen preview environment.
+
+Provider Agnostic: Support any AI provider that uses the OpenAI-compatible API format.
+
+3. Target Audience
+Non-technical founders: Who want to prototype ideas quickly without writing code.
+
+Developers: Who want a fast, AI-assisted way to scaffold UI components.
+
+Privacy-conscious users: Who do not want to share their code or API keys with a third-party SaaS.
+
+4. Core Features & Requirements
+4.1. Landing Page (Template Gallery)
+Hero Section: Headline ("Build Apps with AI"), Subheadline, and a large prompt input box.
+
+Suggestions: Quick-click chips (e.g., Portfolio, Solar System, Restaurant Menu) that auto-fill the prompt box.
+
+Template Gallery: A grid of pre-built templates showing thumbnails and categories (Business, Store, Personal). Clicking one launches the builder with a pre-filled prompt.
+
+4.2. Settings / Providers Page (CRITICAL)
+A dedicated settings modal or page where users configure their AI connection.
+
+Provider Dropdown: OpenAI, Anthropic, Groq, Custom (OpenAI-Compatible).
+
+Base URL Input: Text field (e.g., https://api.openai.com/v1 or http://localhost:11434/v1).
+
+API Key Input: Password field (with show/hide eye icon).
+
+Model Input: Text field or dropdown (e.g., gpt-4o, claude-3-5-sonnet-20240620).
+
+Data Persistence: Clicking "Save" stores these values in the browser's localStorage. Keys must never be sent to a backend.
+
+4.3. The Builder Interface (Split-Screen)
+Left Panel (Chat):
+
+Chat history displaying user prompts and AI responses.
+
+Text input area at the bottom with a "Send" button.
+
+Loading states (e.g., "Creating theme.css...", "Writing code...").
+
+Right Panel (Workspace):
+
+Preview Tab: A live iframe rendering the generated HTML/CSS/JS.
+
+Code Tab: A file tree (e.g., index.html, theme.css, script.js) and a syntax-highlighted code viewer.
+
+Top Navigation Bar:
+
+Back to Home button.
+
+Preview/Code toggle.
+
+Deploy button (e.g., download as ZIP or export to CodeSandbox).
+
+Settings gear icon.
+
+4.4. Iterative Editing (Follow-up Prompts)
+After initial generation, the user can type "Make the background blue."
+
+The system must send the original code + the new prompt to the AI.
+
+The AI returns the updated code, which replaces the old code in the Sandpack preview.
+
+5. Technical Architecture & Stack
+5.1. Recommended Stack
+Frontend Framework: React (Vite) or Next.js (App Router).
+
+Styling: Tailwind CSS + Shadcn UI (for accessible modals, tabs, and forms).
+
+State Management: Zustand (to manage chat history, settings, and generated files globally).
+
+Code Preview: @codesandbox/sandpack-react (Renders code in the browser securely).
+
+AI Integration: Native fetch API (to allow dynamic Base URL) + ReadableStream for parsing streaming responses.
+
+5.2. Data Flow Diagram
+text
+[User Settings] --> [localStorage] 
+                        |
+[User Prompt] ---> [React State] 
+                        |
+                        v
+              [Fetch API Request]
+              URL: (Base URL)/chat/completions
+              Auth: Bearer (API Key)
+              Body: { model: (Model), messages: [...] }
+                        |
+                        v
+              [AI Stream Response]
+                        |
+                        v
+             [Parser extracts HTML/CSS/JS JSON]
+                        |
+                        v
+             [Update Sandpack Files]
+                        |
+                        v
+             [Live Preview Renders]
+5.3. API Request Strategy
+Because the app is entirely client-side, we must use standard fetch.
+
+OpenAI: POST https://api.openai.com/v1/chat/completions
+
+Anthropic: POST https://api.anthropic.com/v1/messages (Requires header anthropic-dangerous-direct-browser-access: true).
+
+Ollama (Local): POST http://localhost:11434/v1/chat/completions
+
+5.4. Prompt Engineering (System Prompt)
+The AI must be instructed to return a specific JSON format so the app can parse the files.
+System Prompt Example:
+
+"You are an expert web developer. When the user asks for an app, return ONLY a valid JSON object. Do not include markdown formatting, explanations, or code blocks. The JSON must have three keys: 'index.html', 'theme.css', and 'script.js'. Ensure all CSS and JS are referenced correctly in the HTML."
+
+6. Non-Functional Requirements
+Security: The app must display a warning that API keys are stored in the browser and users should use restricted keys. No keys should ever be logged to the console or sent to a remote server.
+
+Performance: Streaming must be enabled so users see text appear word-by-word. The Sandpack preview must debounce updates so the iframe doesn't crash on every single keystroke.
+
+Error Handling:
+
+If the API key is invalid (401), show a clear toast notification.
+
+If CORS blocks the request, show a helpful message (e.g., "Your provider blocked the request. Ensure CORS is enabled or use a proxy").
+
+If the AI returns invalid JSON, display a fallback message and the raw AI text.
+
+7. User Flow (Step-by-Step)
+First Visit: User lands on the Home Page.
+
+Setup: User clicks the Settings gear. They select "OpenAI," paste their API key, type gpt-4o, and click Save.
+
+Creation: User clicks the "Solar System" template. They are redirected to the Builder with the prompt pre-filled. They hit "Send."
+
+Generation: The left panel shows "Writing code...". The right panel shows a loading state.
+
+Success: The AI finishes. The right panel renders an interactive solar system animation.
+
+Iteration: The user types, "Make the planets bigger." The system sends the previous code + new prompt. The preview updates.
+
+Export: The user clicks "Deploy" -> "Download ZIP" to get the code for their own hosting.
+
+8. Future Scope (V2)
+Multi-file Support: Allow AI to generate React/Next.js projects instead of just static HTML.
+
+Image Generation: Integrate DALL-E/Stable Diffusion APIs for image assets.
+
+One-click Deploy: Integrate with Vercel or Netlify APIs (requires a backend).
+
+Authentication: User accounts to save projects to a database (requires a backend).
+
+9. Risks & Mitigations
+Risk	Impact	Mitigation
+CORS Errors	High	Anthropic requires a specific header. Custom endpoints may block browser calls. Provide a "CORS Help" tooltip.
+API Key Leakage	High	Keys are stored in localStorage. Malicious XSS could steal them. Mitigation: Ensure the app has strict Content Security Policy (CSP) and is served over HTTPS.
+Invalid JSON from AI	Medium	AI sometimes wraps JSON in Markdown (```json). Mitigation: Write a robust regex parser on the client to extract JSON from Markdown blocks. |
+Sandpack Performance	Medium	Rendering complex code on every keystroke can freeze the browser. Mitigation: Only update Sandpack when the AI finishes its full response.
