@@ -197,7 +197,6 @@ export default function Workspace({ fullscreen = false, onToggleFullscreen }: Wo
               recompileDelay: 400,
               closableTabs: false,
               editorHeight: '100%',
-              containerClassName: 'sp-container',
             }}
           />
         ) : (

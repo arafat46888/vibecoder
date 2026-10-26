@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useStore } from '../store/useStore'
 import { CATEGORIES, SUGGESTIONS, TEMPLATES } from '../lib/templates'
-import GearButton, { ProviderBadge } from '../components/TopBarBits'
+import { GearButton, ProviderBadge } from '../components/TopBarBits'
 
 /** Landing page / template gallery (PRD §4.1). */
 export default function Landing() {
