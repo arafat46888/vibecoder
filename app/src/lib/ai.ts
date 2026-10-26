@@ -17,16 +17,27 @@ Rules:
 3. Make it polished, modern, responsive and visually appealing by default.
 4. When the user's current code is provided, keep its structure, apply only the requested change, and return ALL THREE files again.`
 
-export function buildUserMessage(prompt: string, currentFiles: ProjectFiles | null): string {
+export function buildUserMessage(
+  prompt: string,
+  currentFiles: ProjectFiles | null,
+  history?: Array<{ role: 'user' | 'assistant'; content: string }>,
+): string {
   if (!currentFiles || Object.keys(currentFiles).length === 0) {
     return `Build this app:\n\n${prompt}`
   }
   // Iterative editing (PRD §4.4): send original code + the new prompt.
+  // Include recent conversation so "make it like before"-style follow-ups work.
+  const convo = (history ?? [])
+    .filter((m) => !m.content.startsWith('❌') && !m.content.startsWith('⚠️'))
+    .slice(-6)
+    .map((m) => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content.slice(0, 500)}`)
+    .join('\n')
   return (
     `Here is the current code of my app:\n\n` +
     `<file name="index.html">\n${currentFiles['index.html'] ?? ''}\n</file>\n\n` +
     `<file name="theme.css">\n${currentFiles['theme.css'] ?? ''}\n</file>\n\n` +
     `<file name="script.js">\n${currentFiles['script.js'] ?? ''}\n</file>\n\n` +
+    (convo ? `Recent conversation for context:\n${convo}\n\n` : '') +
     `Apply this change and return the updated app as the same three-file JSON object:\n\n${prompt}`
   )
 }
@@ -34,6 +45,54 @@ export function buildUserMessage(prompt: string, currentFiles: ProjectFiles | nu
 export interface StreamHandlers {
   onToken: (text: string) => void
   signal?: AbortSignal
+}
+
+/**
+ * "Test Connection" helper: makes a tiny non-streaming completion to verify
+ * that the Base URL / API key / model triple actually works.
+ */
+export async function testConnection(settings: ResolvedConnection): Promise<string> {
+  const base = settings.baseUrl.replace(/\/+$/, '')
+  const isAnthropic = settings.protocol === 'anthropic'
+
+  const url = isAnthropic ? `${base}/messages` : `${base}/chat/completions`
+  const headers: Record<string, string> = isAnthropic
+    ? {
+        'Content-Type': 'application/json',
+        'x-api-key': settings.apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true',
+      }
+    : { 'Content-Type': 'application/json', Authorization: `Bearer ${settings.apiKey}` }
+
+  const body = isAnthropic
+    ? { model: settings.model, max_tokens: 4, messages: [{ role: 'user', content: 'Say OK' }] }
+    : { model: settings.model, max_tokens: 4, messages: [{ role: 'user', content: 'Say OK' }] }
+
+  let res: Response
+  try {
+    res = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) })
+  } catch {
+    throw new ApiError(
+      0,
+      'Could not reach the endpoint from this browser.',
+      'Check the Base URL and make sure the provider allows CORS for browser requests.',
+    )
+  }
+  if (!res.ok) {
+    let detail = ''
+    try {
+      const j = await res.json()
+      detail = j?.error?.message ?? j?.message ?? ''
+    } catch {
+      /* ignore */
+    }
+    throw new ApiError(res.status, `HTTP ${res.status}${detail ? ` — ${detail}` : ''}`)
+  }
+  const j = await res.json().catch(() => null)
+  const reply =
+    j?.choices?.[0]?.message?.content ?? j?.content?.[0]?.text ?? '(empty reply)'
+  return String(reply).trim().slice(0, 80) || '(empty reply)'
 }
 
 export class ApiError extends Error {
