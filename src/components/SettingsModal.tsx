@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { useStore } from '../store/useStore'
+import { Eye, EyeOff, Plug, RotateCcw } from 'lucide-react'
+import { useStore, DEFAULT_SYSTEM_PROMPT } from '../store/useStore'
 import {
   PROVIDERS,
   clearSettings,
@@ -7,24 +8,33 @@ import {
   type ProviderId,
   type Settings,
 } from '../lib/providers'
+import { testConnection, ApiError } from '../lib/ai'
 import { pushToast } from './toast'
 
 /**
  * Settings / Providers modal (PRD §4.2 – CRITICAL).
- * Provider dropdown, Base URL, API key with show/hide, model, localStorage persistence.
+ * Provider dropdown, Base URL, API key with show/hide, model input,
+ * Test Connection, custom System Prompt, localStorage persistence.
  */
 export default function SettingsModal() {
   const open = useStore((s) => s.settingsModalOpen)
   const setOpen = useStore((s) => s.setSettingsModalOpen)
   const stored = useStore((s) => s.settings)
   const commitSettings = useStore((s) => s.commitSettings)
+  const systemPrompt = useStore((s) => s.systemPrompt)
+  const setSystemPrompt = useStore((s) => s.setSystemPrompt)
 
   const [draft, setDraft] = useState<Settings>(stored)
+  const [promptDraft, setPromptDraft] = useState(systemPrompt)
   const [showKey, setShowKey] = useState(false)
+  const [testing, setTesting] = useState(false)
 
   useEffect(() => {
-    if (open) setDraft(stored)
-  }, [open, stored])
+    if (open) {
+      setDraft(stored)
+      setPromptDraft(systemPrompt)
+    }
+  }, [open, stored, systemPrompt])
 
   if (!open) return null
 
@@ -36,16 +46,54 @@ export default function SettingsModal() {
   }
 
   const save = () => {
-    commitSettings({ ...draft, baseUrl: draft.baseUrl.trim(), apiKey: draft.apiKey.trim(), model: draft.model.trim() })
-    pushToast('success', 'Settings saved', 'Stored in your browser only — never sent to any server but the provider you chose.')
+    commitSettings({
+      ...draft,
+      baseUrl: draft.baseUrl.trim(),
+      apiKey: draft.apiKey.trim(),
+      model: draft.model.trim(),
+    })
+    setSystemPrompt(promptDraft.trim() ? promptDraft : DEFAULT_SYSTEM_PROMPT)
+    pushToast(
+      'success',
+      'Settings saved',
+      'Stored in your browser only — never sent to any server but the provider you chose.',
+    )
     setOpen(false)
   }
 
   const forget = () => {
     clearSettings()
-    setDraft({ ...PROVIDERS.openai, apiKey: '' } as unknown as Settings)
-    commitSettings({ provider: 'openai', baseUrl: PROVIDERS.openai.baseUrl, model: PROVIDERS.openai.defaultModel, apiKey: '' })
+    commitSettings({
+      provider: 'openai',
+      baseUrl: PROVIDERS.openai.baseUrl,
+      model: PROVIDERS.openai.defaultModel,
+      apiKey: '',
+    })
+    setDraft((d) => ({ ...d, apiKey: '' }))
     pushToast('info', 'API key removed from this browser')
+  }
+
+  const test = async () => {
+    if (!hasUsableSettings(draft)) {
+      pushToast('error', 'Fill in Base URL, API key and Model first')
+      return
+    }
+    setTesting(true)
+    try {
+      const reply = await testConnection({
+        baseUrl: draft.baseUrl,
+        apiKey: draft.apiKey,
+        model: draft.model,
+        protocol: PROVIDERS[draft.provider].protocol,
+      })
+      pushToast('success', 'Connection OK ✓', `${draft.model} replied: “${reply}”`)
+    } catch (err) {
+      const msg = err instanceof ApiError ? err.message : String(err)
+      const tip = err instanceof ApiError ? err.tip : undefined
+      pushToast('error', 'Connection failed', tip ? `${msg} — ${tip}` : msg)
+    } finally {
+      setTesting(false)
+    }
   }
 
   return (
@@ -66,17 +114,14 @@ export default function SettingsModal() {
 
         <div className="modal-body">
           <div className="security-note">
-            🔒 <strong>BYOK &amp; privacy:</strong> your API key is stored only in this browser's
+            🔒 <strong>BYOK &amp; privacy:</strong> your API key is stored only in this browser's{' '}
             <code>localStorage</code> and sent directly to the provider. Use keys with spending
             limits where possible.
           </div>
 
           <label className="field">
             <span>Provider</span>
-            <select
-              value={draft.provider}
-              onChange={(e) => pickProvider(e.target.value as ProviderId)}
-            >
+            <select value={draft.provider} onChange={(e) => pickProvider(e.target.value as ProviderId)}>
               {Object.values(PROVIDERS).map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.label}
@@ -114,7 +159,7 @@ export default function SettingsModal() {
                 aria-label={showKey ? 'Hide API key' : 'Show API key'}
                 title={showKey ? 'Hide' : 'Show'}
               >
-                {showKey ? '🙈' : '👁️'}
+                {showKey ? <EyeOff size={15} /> : <Eye size={15} />}
               </button>
             </div>
           </label>
@@ -149,9 +194,35 @@ export default function SettingsModal() {
             </p>
           </details>
 
+          <label className="field">
+            <span>System Prompt (advanced)</span>
+            <textarea
+              rows={7}
+              spellCheck={false}
+              value={promptDraft}
+              onChange={(e) => setPromptDraft(e.target.value)}
+              placeholder={DEFAULT_SYSTEM_PROMPT}
+            />
+            <div className="prompt-actions">
+              <span className="hint">
+                Controls how the AI formats its output. Keep the three JSON keys or parsing will fail.
+              </span>
+              <button
+                type="button"
+                className="mini-btn"
+                onClick={() => setPromptDraft(DEFAULT_SYSTEM_PROMPT)}
+              >
+                <RotateCcw size={12} /> Reset to default
+              </button>
+            </div>
+          </label>
+
           <div className="modal-actions">
             <button className="btn ghost" onClick={forget}>
               Remove key
+            </button>
+            <button className="btn secondary" onClick={test} disabled={testing}>
+              <Plug size={14} /> {testing ? 'Testing…' : 'Test Connection'}
             </button>
             <button className="btn primary" onClick={save} disabled={!hasUsableSettings(draft)}>
               Save

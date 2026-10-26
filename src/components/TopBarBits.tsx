@@ -2,7 +2,7 @@ import { useNavigate } from 'react-router-dom'
 import { useStore } from '../store/useStore'
 
 /** Settings gear icon shown on every page (opens the BYOK provider modal). */
-export default function GearButton() {
+export function GearButton() {
   const setModal = useStore((s) => s.setSettingsModalOpen)
   return (
     <button
